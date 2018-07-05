@@ -1,17 +1,78 @@
 https://www.bilibili.com/video/av22616373/?p=1
 https://www.kancloud.cn/curder/nginx/96674
 
-# nginx的安装 与 信号量
+# 1. nginx的安装 与 信号量
 
-## nginx的安装
+## 1.1. nginx的安装
+下载地址：nginx官网，下载stable版本
+wget 下载到服务器上，再解压
 
-下载地址: nginx的官 https://nginx.org/en/download.html 选择stable版本
-# 编译安装
+下载地址: nginx的官 https://nginx.org/en/download.html 选择stable版本  
 
+### 1.1.1. 编译安装三部曲
+1. config 生产install文件  
+其中会依赖gcc编译器  
+当缺少 xxxx library 就是安装 yum install xxx-devel、  
 
+``` python
+./configure --prefix=/usr/local/nginx
+```
 
+     yum install -y zlib-devel  
+     yum install -y pcre-devel
+2. make 编译成成二进制文件  
+    直接命令行下 make
 
-## 配置文件介绍
+3. make install  
+    其实就是把生产的二进制文件 copy 到指定的文件夹  
+
+安装完成：在安装目录下的sbin的文件下：./nginx  启动进程
+
+启动错误：  
+端口号被占用  
+``` python
+netstat -ant | grep 80
+kill -9 进程号  # 杀掉占用的端口
+```
+
+## nginx进程模型
+
+nginx 一启动就会有 master 与 worker进程。
+
+``` python
+[root@lh ~]# ps aux | grep nginx
+root      17644  0.0  0.0  20544   608 ?        Ss   13:21   0:00 nginx: master process ./nginx  #  主进程
+nobody    17645  0.0  0.0  20988  1576 ?        S    13:21   0:00 nginx: worker process          #  工作进程
+```
+
+在工作方式上，Nginx分为单工作进程和多工作进程两种模式。  
+    在单工作进程模式下，除主进程外，还有一个工作进程，工作进程是单线程的；  
+    在多工作进程模式下，每个工作进程包含多个线程。Nginx默认为单工作进程模式。
+
+Nginx在启动后，会有一个master进程和多个worker进程。
+
+1. master进程
+
+主要用来管理worker进程，包含：接收来自外界的信号，向各worker进程发送信号，监控worker进程的运行状态，当worker进程退出后(异常情况下)，会自动重新启动新的worker进程。
+
+master进程充当整个进程组与用户的交互接口，同时对进程进行监护。它不需要处理网络事件，不负责业务的执行，只会通过管理worker进程来实现重启服务、平滑升级、更换日志文件、配置文件实时生效等功能。
+
+我们要控制nginx，只需要通过kill向master进程发送信号就行了。比如kill -HUP pid，则是告诉nginx，从容地重启nginx，我们一般用这个信号来重启nginx，或重新加载配置，因为是从容地重启，因此服务是不中断的。master进程在接收到HUP信号后是怎么做的呢？首先master进程在接到信号后，会先重新加载配置文件，然后再启动新的worker进程，并向所有老的worker进程发送信号，告诉他们可以光荣退休了。新的worker在启动后，就开始接收新的请求，而老的worker在收到来自master的信号后，就不再接收新的请求，并且在当前进程中的所有未处理完的请求处理完成后，再退出。当然，直接给master进程发送信号，这是比较老的操作方式，nginx在0.8版本之后，引入了一系列命令行参数，来方便我们管理。比如，./nginx -s reload，就是来重启nginx，./nginx -s stop，就是来停止nginx的运行。如何做到的呢？我们还是拿reload来说，我们看到，执行命令时，我们是启动一个新的nginx进程，而新的nginx进程在解析到reload参数后，就知道我们的目的是控制nginx来重新加载配置文件了，它会向master进程发送信号，然后接下来的动作，就和我们直接向master进程发送信号一样了。
+
+2. worker进程：
+而基本的网络事件，则是放在worker进程中来处理了。多个worker进程之间是对等的，他们同等竞争来自客户端的请求，各进程互相之间是独立的。一个请求，只可能在一个worker进程中处理，一个worker进程，不可能处理其它进程的请求。worker进程的个数是可以设置的，一般我们会设置与机器cpu核数一致，这里面的原因与nginx的进程模型以及事件处理模型是分不开的。
+worker进程之间是平等的，每个进程，处理请求的机会也是一样的。当我们提供80端口的http服务时，一个连接请求过来，每个进程都有可能处理这个连接，怎么做到的呢？首先，每个worker进程都是从master进程fork过来，在master进程里面，先建立好需要listen的socket（listenfd）之后，然后再fork出多个worker进程。所有worker进程的listenfd会在新连接到来时变得可读，为保证只有一个进程处理该连接，所有worker进程在注册listenfd读事件前抢accept_mutex，抢到互斥锁的那个进程注册listenfd读事件，在读事件里调用accept接受该连接。当一个worker进程在accept这个连接之后，就开始读取请求，解析请求，处理请求，产生数据后，再返回给客户端，最后才断开连接，这样一个完整的请求就是这样的了。我们可以看到，一个请求，完全由worker进程来处理，而且只在一个worker进程中处理。worker进程之间是平等的，每个进程，处理请求的机会也是一样的。当我们提供80端口的http服务时，一个连接请求过来，每个进程都有可能处理这个连接，怎么做到的呢？首先，每个worker进程都是从master进程fork过来，在master进程里面，先建立好需要listen的socket（listenfd）之后，然后再fork出多个worker进程。所有worker进程的listenfd会在新连接到来时变得可读，为保证只有一个进程处理该连接，所有worker进程在注册listenfd读事件前抢accept_mutex，抢到互斥锁的那个进程注册listenfd读事件，在读事件里调用accept接受该连接。当一个worker进程在accept这个连接之后，就开始读取请求，解析请求，处理请求，产生数据后，再返回给客户端，最后才断开连接，这样一个完整的请求就是这样的了。我们可以看到，一个请求，完全由worker进程来处理，而且只在一个worker进程中处理。
+
+## 信号控制信号量
+
+TERM, INT   fast shutdown  
+QUIT        graceful shutdown  
+HUP         changing configuration, keeping up with a changed time zone (only for FreeBSD and Linux), starting new worker processes with a new configuration, graceful shutdown of old worker processes
+USR1        re-opening log files
+USR2        upgrading an executable file
+WINCH       graceful shutdown of worker processes
+
+# 2. 配置文件介绍
 
 ``` python
 """
@@ -34,7 +95,7 @@ events {
 }
 
 '''
-http区域：我么主要的配置区域
+http区域：我们主要的配置区域
 '''
 http {
     include       mime.types;
@@ -147,13 +208,14 @@ http {
 
 ```
 
-## 三种虚拟主机
+## 2.1. 三种虚拟主机
 
 对于网工的同学，可能对ip与域名的两种方式不能理解，nginx是解析http请求包里面的数据地址。 而不是看dns转换后的ip。
 
-### 域名的虚拟主机
+### 2.1.1. 域名的虚拟主机
 
 监听域名，根据域名反射到不同的路径资源，最少配置三项:
+
 1. 监听端口
 2. 域名
 3. 资源的路径与文件名
@@ -169,7 +231,7 @@ server{
 }
 ```
 
-## 端口虚拟主机
+## 2.2. 端口虚拟主机
 
 ``` python
  42     server {
@@ -182,7 +244,7 @@ server{
  49     }
 ```
 
-## ip的虚拟主机
+## 2.3. ip的虚拟主机
 
 ``` python
  42     server {
@@ -195,9 +257,9 @@ server{
  49     }
 ```
 
-## 日志管理
+# 3. 日志管理
 
-### 日志的配置
+## 3.1. 日志的配置
 
 nginx可以对不同的server做不同的日志管理。  
 默认在启动的时候,使用了系统自定义的main格式，存放在logs/access.log下。  
@@ -220,5 +282,22 @@ nginx可以对不同的server做不同的日志管理。
  49     }
 ```
 
-### 日志的切割
+## 3.2. 日志的切割
+
 日志如果不切割，量会非常大。 按照每天进行分割，这样文件就会很小。也便于管理。
+
+所需要的技术shell脚本与定时任务
+
+``` python
+#!/bin/bash
+
+DATE=$(date -d yesterday +%Y%m%d)
+LOG_PATH=/usr/local/nginx/logs/
+LOG_NAME=access.log
+BASE_PATH=/var/log/
+SAVE_LOG_NAME=${DATE}.${LOG_NAME}
+
+mv ${LOG_PATH}${LOG_NAME} ${BASE_PATH}${SAVE_LOG_NAME}
+
+kill -USR1 $(cat /usr/local/nginx/logs/nginx.pid)
+```
