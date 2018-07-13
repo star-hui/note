@@ -40,6 +40,8 @@ dns解析式层次化，分布式的。 从后往前解析www.baidu.com.  最后
 
 ### 2.1.2. DNS服务器cache only的使用
 
+只进行转发和缓存，本地不做dns的解析。
+
 1. 安装
     yum install -y bind （ --installroot=[path] 指定安装目录）  
     bind-utils(dig工具解析,检测使用)  dig == yum provides *bin/dig # 进行查询
@@ -53,6 +55,9 @@ options {  #  修改这几样，基本就可以工作了。
         dump-file       "/var/named/data/cache_dump.db";
         statistics-file "/var/named/data/named_stats.txt";
         memstatistics-file "/var/named/data/named_mem_stats.txt";
+        forwrd             first;
+        forwarders        {223.5.5.5;114.114.114.114;};
+        for
         allow-query     { localhost; };    # 修改成any
 }
 ```
@@ -80,9 +85,15 @@ iptable -F
 systemctl start named  # 注意先要退出终端，重新进入一次
 ```
 
+4. 自启动制作
 
-### 2.1.3. 客户端的使用
-linux下第一种方式: 在网卡的配置文件中加入dns
+> systemctrl enable named
+
+### 2.1.3. 客户端指定dns
+
+linux下
+
+第一种方式: 在网卡的配置文件中加入dns
 第二种在 vim /etc/resolv.conf 
 > nameserver dns_ip
 
@@ -188,7 +199,6 @@ host 192.168.0.88  # 反向解析
 host -t soa baidu.com   # 查询某个域的授权
 host -t ns  baidu.com   # 查询某个域的dns服务器
 host -t mx  baidu.com   # 查询某个域的邮件服务器
-
 dig www.baidu.com             # 使用/etc/resove.conf 的dns来查询
 dig @192.168.1.1 www.126.com  # 指定dns来查询
 ```
@@ -197,4 +207,6 @@ dig @192.168.1.1 www.126.com  # 指定dns来查询
 
 1. 先查找本地缓存,有直接使用(windows下hosts文件也是在缓存中的)
 2. 查询本地的dns，如果是本地管理的域名主机，直接返回(有则返回记录，无则找不到)
-3. 如果本地的dns，不是该主机的管理者，则向上一级的发送数据。
+3. 如果本地的dns，不是该主机的管理者，则向上一级的发送数据。 
+
+<p style="color:red;">这是比font标签更好的方式。可以试试。</p>
