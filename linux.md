@@ -1,5 +1,82 @@
-# 1. linux网络
-## 1.1. dns相关
+# 1. linux基础篇
+
+## 1.1. 系统性能命令相关
+
+系统调优过程: cpu -> MeM -> Disk -> Network -> 应用程序  
+主要是四大系统:
+
+### 1.1.1. 找出cpu占用最多的
+
+``` python
+"1.找出系统cpu占用最多"
+uptime 查看系统负载
+ 10:30:12 up 8 days,  1:54,  3 users,  load average: 4.14, 4.10, 4.12
+现在时间     运行时长           用户        负载:       1m     5m   15m
+经验值:cpu核数*3 < 负载值就正常。队列的长度，包含正在运行的
+
+方法1:使用TOP命令，按下大写的P，就可以看到最多。实时的
+方法2：ps aux --sort -pcpu | more 某一时刻的数据. pcpu能看到某一个的数据
+```
+
+### 1.1.2. 找出系统内存占用最多的
+
+``` python
+"# 2.找出系统内存占用最多"
+方法1: top 按下 大写的M
+方法2：ps aux --sort -rss | more 或 > a.log（重定向）
+```
+
+### 1.1.3. 找出磁盘读写最多的
+
+``` python
+"# 3.找出系统磁盘读写最多的进程"
+dell@djz:~$ sudo apt-get install sysstat
+dell@djz:~$ iostat -d -k -p /dev/sda
+Linux 3.13.0-24-generic (djz.com)       2018年07月17日  _x86_64_        (20 CPU)
+
+Device:            tps    kB_read/s    kB_wrtn/s    kB_read    kB_wrtn
+sda               4.14         3.93       281.67    2756195  197440200
+sda1              4.00         3.91       281.54    2741053  197352648
+sda2              0.00         0.00         0.00         18          0
+sda5              0.00         0.02         0.12      13728      87552
+# sda1使用的比较多，使用df -h 查看具体的分区情况，sda1属于/分区，所有读写很多
+dell@djz:~$ df -h
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sda1       1.8T   69G  1.6T   5% /
+none            4.0K     0  4.0K   0% /sys/fs/cgroup
+udev             32G  4.0K   32G   1% /dev
+tmpfs           6.3G  1.2M  6.3G   1% /run
+none            5.0M     0  5.0M   0% /run/lock
+none             32G  4.6M   32G   1% /run/shm
+none            100M     0  100M   0% /run/user
+
+# 当cpu不高，内存不高，网络也正常，但是服务器就是卡，如何解决。
+# 一般就是磁盘问题了。找出系统中io最大的
+
+iotop:
+-o -only 只显示在读写硬盘的程序
+-d       设定刷新间隔时间间隔
+使用:iotop
+```
+
+### 1.1.4. 找出网络使用最多的
+
+``` python
+"4.查找网络使用最多的"
+yum install epel  # 该包在epel下
+yum install nload
+
+nload 直接进入
+ab -c 2 -n 1000 http://www.baidu.com/html  进行流量模拟
+
+
+使用nethogs找出使用带宽最多的进程
+yum install nethogs
+使用： nethogs
+wget进行测试就ok了、
+```
+
+## 1.2. 客户端dns设置
 
 设置dns
 
@@ -20,6 +97,31 @@ DNS1=192.168.0.88
 search cn
 nameserver 192.168.0.88
 ```
+
+## 系统安装完成的事情
+
+``` python
+# 1. 设置静态地址，dns，主机等
+ls /etc/sysconfig/network-scripts/ifcfg-ens33     #IP地址，子网掩码等配置文件
+ls /etc/sysconfig/network-scripts/ifcfg-lo 　　    #网卡回环地址
+cat /etc/resolv.conf    　　　　　　　　　　　　　　   #DNS配置文件
+cat /etc/hosts          　　　　　　　　　　　　　    #设置主机和IP绑定信息
+cat /etc/hostname    　　　　　　　　　　　　　　　　  #设置主机名
+
+# 2. 关闭SeLInux
+
+临时关闭：
+getenforce     #状态为enfocing，为打开
+setenfoce   0  #状态为Permissive
+永久关闭：
+vim /etc/selinux/config  #直接修改配置文件 把enforing改成disabled
+
+# 3. 更换yum源 以及安装epol源
+yum 
+
+# 3.更新软件包和系统内核
+yum update
+
 
 # 2. 应用部署
 
@@ -207,6 +309,6 @@ dig @192.168.1.1 www.126.com  # 指定dns来查询
 
 1. 先查找本地缓存,有直接使用(windows下hosts文件也是在缓存中的)
 2. 查询本地的dns，如果是本地管理的域名主机，直接返回(有则返回记录，无则找不到)
-3. 如果本地的dns，不是该主机的管理者，则向上一级的发送数据。 
+3. 如果本地的dns，不是该域的管理者，则向上一级的发送请求。
 
-<p style="color:red;">这是比font标签更好的方式。可以试试。</p>
+这是比font标签更好的方式。可以试试。
